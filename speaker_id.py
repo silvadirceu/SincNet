@@ -26,7 +26,7 @@ from dnn_models import SincNet as CNN
 from data_io import ReadList,read_conf,str_to_bool
 
 
-def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_amp):
+def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_amp, device):
     
  # Initialization of the minibatch (batch_size,[0=>x_t,1=>x_t+N,1=>random_samp])
  sig_batch=np.zeros([batch_size,wlen])
@@ -57,8 +57,8 @@ def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_a
   sig_batch[i,:]=signal[snt_beg:snt_end]*rand_amp_arr[i]
   lab_batch[i]=lab_dict[wav_lst[snt_id_arr[i]]]
   
- inp=Variable(torch.from_numpy(sig_batch).float().cuda().contiguous())
- lab=Variable(torch.from_numpy(lab_batch).float().cuda().contiguous())
+ inp=Variable(torch.from_numpy(sig_batch).float().to(device).contiguous())
+ lab=Variable(torch.from_numpy(lab_batch).float().to(device).contiguous())
   
  return inp,lab  
 
@@ -139,6 +139,7 @@ except:
 # setting seed
 torch.manual_seed(seed)
 np.random.seed(seed)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # loss function
 cost = nn.NLLLoss()
@@ -150,7 +151,6 @@ wshift=int(fs*cw_shift/1000.00)
 
 # Batch_dev
 Batch_dev=128
-
 
 # Feature extractor CNN
 CNN_arch = {'input_dim': wlen,
@@ -167,10 +167,10 @@ CNN_arch = {'input_dim': wlen,
           }
 
 CNN_net=CNN(CNN_arch)
-CNN_net.cuda()
+CNN_net.to(device)
 
 # Loading label dictionary
-lab_dict=np.load(class_dict_file).item()
+lab_dict=np.load(class_dict_file,allow_pickle=True).item()
 
 
 
@@ -185,8 +185,7 @@ DNN1_arch = {'input_dim': CNN_net.out_dim,
           }
 
 DNN1_net=MLP(DNN1_arch)
-DNN1_net.cuda()
-
+DNN1_net.to(device)
 
 DNN2_arch = {'input_dim':fc_lay[-1] ,
           'fc_lay': class_lay,
@@ -200,8 +199,7 @@ DNN2_arch = {'input_dim':fc_lay[-1] ,
 
 
 DNN2_net=MLP(DNN2_arch)
-DNN2_net.cuda()
-
+DNN2_net.to(device)
 
 if pt_file!='none':
    checkpoint_load = torch.load(pt_file)
@@ -229,7 +227,7 @@ for epoch in range(N_epochs):
 
   for i in range(N_batches):
 
-    [inp,lab]=create_batches_rnd(batch_size,data_folder,wav_lst_tr,snt_tr,wlen,lab_dict,0.2)
+    [inp,lab]=create_batches_rnd(batch_size,data_folder,wav_lst_tr,snt_tr,wlen,lab_dict,0.2, device)
     pout=DNN2_net(DNN1_net(CNN_net(inp)))
     
     pred=torch.max(pout,dim=1)[1]
@@ -276,7 +274,7 @@ for epoch in range(N_epochs):
 
      [signal, fs] = sf.read(data_folder+wav_lst_te[i])
 
-     signal=torch.from_numpy(signal).float().cuda().contiguous()
+     signal=torch.from_numpy(signal).float().to(device).contiguous()
      lab_batch=lab_dict[wav_lst_te[i]]
     
      # split signals into chunks
@@ -286,9 +284,9 @@ for epoch in range(N_epochs):
      N_fr=int((signal.shape[0]-wlen)/(wshift))
      
 
-     sig_arr=torch.zeros([Batch_dev,wlen]).float().cuda().contiguous()
-     lab= Variable((torch.zeros(N_fr+1)+lab_batch).cuda().contiguous().long())
-     pout=Variable(torch.zeros(N_fr+1,class_lay[-1]).float().cuda().contiguous())
+     sig_arr=torch.zeros([Batch_dev,wlen]).float().to(device).contiguous()
+     lab= Variable((torch.zeros(N_fr+1)+lab_batch).to(device).contiguous().long())
+     pout=Variable(torch.zeros(N_fr+1,class_lay[-1]).float().to(device).contiguous())
      count_fr=0
      count_fr_tot=0
      while end_samp<signal.shape[0]:
@@ -301,7 +299,7 @@ for epoch in range(N_epochs):
              inp=Variable(sig_arr)
              pout[count_fr_tot-Batch_dev:count_fr_tot,:]=DNN2_net(DNN1_net(CNN_net(inp)))
              count_fr=0
-             sig_arr=torch.zeros([Batch_dev,wlen]).float().cuda().contiguous()
+             sig_arr=torch.zeros([Batch_dev,wlen]).float().to(device).contiguous()
    
      if count_fr>0:
       inp=Variable(sig_arr[0:count_fr])

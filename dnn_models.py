@@ -368,8 +368,7 @@ class SincNet(nn.Module):
        self.cnn_N_filt=options['cnn_N_filt']
        self.cnn_len_filt=options['cnn_len_filt']
        self.cnn_max_pool_len=options['cnn_max_pool_len']
-       
-       
+
        self.cnn_act=options['cnn_act']
        self.cnn_drop=options['cnn_drop']
        

@@ -52,6 +52,50 @@ def getPathFileNameExt(filepath):
 
 	return path,filename,basename,ext
 
+def fast_scandir(dirname):
+    subfolders= [f.path for f in os.scandir(dirname) if f.is_dir()]
+    for dirname in list(subfolders):
+        subfolders.extend(fast_scandir(dirname))
+
+    return subfolders
+
+def get_subdir(in_folder):
+
+    maindir = os.path.basename(in_folder)
+    pathsdir = []
+    for path, subdirs, files in os.walk(in_folder):
+        for name in subdirs:
+            fullsdir = os.path.join(path, name)
+            newpath = fullsdir.split(maindir, 1)[1]
+            pathsdir.append(newpath[1:])
+
+    return pathsdir
+
+def create_sudirs(subdirs,outdir):
+
+    if not os.path.exists(outdir):
+        os.makedirs(outdir, exist_ok=True)
+
+    path_fail = []
+    for p in subdirs:
+        path = os.path.join(outdir,p)
+        flag = createDirectory(path)
+        if not flag:
+            path_fail.append(path)
+            print("Fail to create %s " % (path))
+
+    return path_fail
+
+def copy_sdir(in_path, out_path):
+    subdirs = get_subdir(in_path)
+    pathsfiled = create_sudirs(subdirs, out_path)
+
+    if len(pathsfiled) > 0 :
+        print("Fails: ")
+        print(paths)
+    else:
+        print("Sub Dirs Created!")
+
 def sph2wav(timitpath="./timit/train/", ext='*.wav'):
  import glob
  from sphfile import SPHFile
@@ -89,7 +133,7 @@ def sph2wav(timitpath="./timit/train/", ext='*.wav'):
 
      sr = (sph.format)['sample_rate']
      txt_file = wav_file[:-3] + "txt"
-     print(txt_file)
+     #print(txt_file)
 
      f = open(txt_file,'r')
      for line in f:
@@ -99,8 +143,8 @@ def sph2wav(timitpath="./timit/train/", ext='*.wav'):
      f.close()
 
      print("writing file ", filetemp)
-     print("start = %.2f - end = %.2f"%(int(words[0]), int(words[1])))
-     print("start = %.2f - end = %.2f"%(start_time, end_time))
+     #print("start = %.2f - end = %.2f"%(int(words[0]), int(words[1])))
+     #print("start = %.2f - end = %.2f"%(start_time, end_time))
 
      sph.write_wav(filetemp,start_time,end_time)
      os.remove(wav_file)
@@ -116,9 +160,18 @@ def ReadList(list_file):
  f.close()
  return list_sig
 
+def copy_dir(src, dst, *, follow_sym=True):
+    if os.path.isdir(dst):
+        dst = os.path.join(dst, os.path.basename(src))
+    if os.path.isdir(src):
+        shutil.copyfile(src, dst, follow_symlinks=follow_sym)
+        shutil.copystat(src, dst, follow_symlinks=follow_sym)
+    return dst
+
 def copy_folder(in_folder,out_folder):
  if not(os.path.isdir(out_folder)):
-  shutil.copytree(in_folder, out_folder, ignore=ig_f)
+  print("True")
+  shutil.copytree(in_folder, out_folder, copy_function=copy_dir) #, ignore=ig_f)
 
 def ig_f(dir, files):
  return [f for f in files if os.path.isfile(os.path.join(dir, f))]
@@ -128,12 +181,11 @@ def prepare(in_folder,out_folder,list_file):
     list_sig = ReadList(list_file)
 
     # Replicate input folder structure to output folder
-    copy_folder(in_folder, out_folder)
 
     # Speech Data Reverberation Loop
     for i in range(len(list_sig)):
         # Open the wav file
-        wav_file = in_folder + '/' + list_sig[i]
+        wav_file = os.path.join(in_folder,list_sig[i])
         [signal, fs] = sf.read(wav_file)
         signal = signal.astype(np.float64)
 
@@ -150,7 +202,7 @@ def prepare(in_folder,out_folder,list_file):
         signal = signal[beg_sig:end_sig]
 
         # Save normalized speech
-        file_out = out_folder + '/' + list_sig[i]
+        file_out = os.path.join(out_folder,list_sig[i])
 
         sf.write(file_out, signal, fs)
 
@@ -163,6 +215,14 @@ if __name__ == "__main__":
     out_folder=sys.argv[2]
     list_file=sys.argv[3]
 
-    sph2wav(timitpath=in_folder, ext='**/*.wav')
+    # step 1) Convert upper case to lower case if necessary
+    # use upper2lower_case.sh
 
-    #prepare(in_folder,out_folder,list_file)
+    # step 2) convert NIST to WAV format
+    # sph2wav(timitpath=in_folder, ext='**/*.wav')
+
+    # step 3) Copy folder structure
+    # copy_sdir(in_folder, out_folder)
+
+    # step 4) Normalize files
+    prepare(in_folder,out_folder,list_file)
